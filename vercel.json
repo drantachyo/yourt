@@ -1,9 +1,6 @@
 {
   "buildCommand": "echo 'Static site - no build needed'",
   "outputDirectory": "./",
-  "env": {
-    "VERCEL_URL": "@vercel_url"
-  },
   "headers": [
     {
       "source": "/(.+)\\.(glb|mp3|js|css)$",
