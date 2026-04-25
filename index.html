@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yurt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        steppe: { 50:'#fdfbf7',100:'#f7f1e6',200:'#ece0c9',300:'#dbca9f',400:'#c5a870',500:'#b38b4d',600:'#9b713f',700:'#7e5835',800:'#674930',900:'#563e2c' },
+                        accent: { gold:'#d4af37', terracotta:'#a64d32', deepblue:'#1a2a40' }
+                    },
+                    fontFamily: { display:['Playfair Display','serif'], body:['Outfit','sans-serif'] },
+                    animation: { 'fade-in':'fadeIn 1.2s ease-out forwards', 'float':'float 6s ease-in-out infinite', 'slide-up':'slideUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards' },
+                    keyframes: {
+                        fadeIn: { '0%':{opacity:'0',transform:'translateY(24px)'}, '100%':{opacity:'1',transform:'translateY(0)'} },
+                        float: { '0%,100%':{transform:'translateY(0)'}, '50%':{transform:'translateY(-12px)'} },
+                        slideUp: { '0%':{opacity:'0',transform:'translateY(30px)'}, '100%':{opacity:'1',transform:'translateY(0)'} }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root { --gold:#d4af37; --terracotta:#a64d32; --deepblue:#1a2a40; }
+        * { box-sizing: border-box; }
+        body { background:#fdfbf7; color:#563e2c; overflow-x:hidden; scroll-behavior:smooth; }
+
+        .glass { background:rgba(255,255,255,0.72); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.35); }
+        #interactive-yurt-container { position:relative; width:100%; height:72vh; background:#111519; border-radius:1.5rem; overflow:hidden; box-shadow:0 30px 60px -12px rgba(0,0,0,0.6); }
+        #yurt-canvas-container { width:100%; height:100%; }
+        #yurt-canvas-container canvas { cursor:grab; }
+        #yurt-canvas-container canvas:active { cursor:grabbing; }
+        .yurt-info-overlay { position:absolute; bottom:2rem; right:2rem; max-width:340px; pointer-events:none; opacity:0; transform:translateY(24px); transition:all 0.5s cubic-bezier(0.16,1,0.3,1); z-index:20; }
+        .yurt-info-overlay.active { opacity:1; transform:translateY(0); pointer-events:auto; }
+        #audio-widget { position:fixed; bottom:2rem; left:2rem; z-index:50; }
+        #audio-panel { display:none; position:absolute; bottom:calc(100% + 12px); left:0; width:280px; }
+        #audio-panel.open { display:block; animation: slideUp 0.35s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .track-item { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-radius:10px; transition:background 0.2s; }
+        .track-item:hover { background:rgba(212,175,55,0.12); }
+        .track-item.playing { background:rgba(212,175,55,0.2); }
+        .track-dot { width:8px; height:8px; border-radius:50%; background:#ccc; flex-shrink:0; transition:background 0.2s; }
+        .track-item.playing .track-dot { background:var(--gold); box-shadow:0 0 6px var(--gold); }
+        #lang-switcher button { padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:.08em; transition:all 0.2s; }
+        #lang-switcher button.active { background:var(--gold); color:#fff; }
+        .reveal { opacity:0; transform:translateY(32px); transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); }
+        .reveal.visible { opacity:1; transform:translateY(0); }
+        .ornament-border { border-image: repeating-linear-gradient(90deg, var(--gold) 0px, var(--gold) 6px, transparent 6px, transparent 12px) 1; }
+        #audio-progress-bar { height:3px; background:rgba(212,175,55,0.25); border-radius:2px; overflow:hidden; }
+        #audio-progress-fill { height:100%; background:var(--gold); width:0%; transition:width 0.3s linear; border-radius:2px; }
+
+        @keyframes pulse-ring { 0%{box-shadow:0 0 0 0 rgba(212,175,55,0.4)} 70%{box-shadow:0 0 0 12px rgba(212,175,55,0)} 100%{box-shadow:0 0 0 0 rgba(212,175,55,0)} }
+        .info-btn-pulse { animation: pulse-ring 2s infinite; }
+
+        .section-divider { height:1px; background:linear-gradient(90deg,transparent,#dbca9f,transparent); }
+
+        /* ── Боковое меню частей ── */
+        .part-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(17,21,25,0.75);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(212,175,55,0.25);
+            border-radius: 12px;
+            color: #c5a870;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.25s;
+            white-space: nowrap;
+            min-width: 130px;
+        }
+        .part-btn:hover {
+            border-color: rgba(212,175,55,0.7);
+            color: #d4af37;
+            background: rgba(212,175,55,0.12);
+        }
+        .part-btn.active {
+            background: rgba(212,175,55,0.2);
+            border-color: #d4af37;
+            color: #d4af37;
+            box-shadow: 0 0 12px rgba(212,175,55,0.25);
+        }
+        .part-icon {
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .part-btn-reset {
+            margin-top: 4px;
+            padding: 7px 14px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #666;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .part-btn-reset:hover {
+            color: #aaa;
+            border-color: rgba(255,255,255,0.25);
+        }
+    </style>
+</head>
+<body class="font-body">
+
+<div id="lang-switcher" class="fixed top-4 right-4 z-50 glass flex gap-1 px-2 py-1.5 rounded-full shadow-lg border border-steppe-200">
+    <button onclick="setLang('ru')" class="active" id="btn-ru">RU</button>
+    <button onclick="setLang('kz')" id="btn-kz">KZ</button>
+    <button onclick="setLang('en')" id="btn-en">EN</button>
+</div>
+<div id="audio-widget">
+    <div id="audio-panel" class="glass rounded-2xl shadow-2xl border border-steppe-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-steppe-100 flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-widest text-steppe-800" data-i18n="playlist">Плейлист</span>
+            <button onclick="togglePanel()" class="text-steppe-400 hover:text-steppe-800 transition-colors text-lg leading-none">&times;</button>
+        </div>
+        <div id="track-list" class="py-2 max-h-72 overflow-y-auto">
+        </div>
+        <div class="px-4 pb-3 pt-1">
+            <div id="audio-progress-bar"><div id="audio-progress-fill"></div></div>
+            <div class="flex justify-between mt-1">
+                <span id="current-track-name" class="text-[10px] text-steppe-500 truncate max-w-[180px]">—</span>
+                <span id="current-time" class="text-[10px] text-steppe-400">0:00</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-3 glass px-4 py-2 rounded-full shadow-lg border border-steppe-200 mt-2">
+        <button id="audio-toggle" onclick="togglePlay()" class="w-10 h-10 flex items-center justify-center bg-accent-gold text-white rounded-full hover:bg-steppe-600 transition-all hover:scale-110 info-btn-pulse">
+            <svg id="play-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/></svg>
+            <svg id="pause-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+        </button>
+        <button onclick="togglePanel()" class="text-xs font-semibold uppercase tracking-wider text-steppe-800 hover:text-accent-gold transition-colors flex items-center gap-1.5">
+            <span data-i18n="steppe_ambience">Степной Амбиент</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+        </button>
+    </div>
+</div>
+
+<header class="relative h-screen flex items-center justify-center overflow-hidden">
+    <div class="absolute inset-0 z-0">
+        <img src="https://opal.google/board/blobs/f0094782-6503-43c8-ab9f-125f24b8a3a4" alt="Kazakh Steppe" class="w-full h-full object-cover scale-105 animate-float opacity-80">
+        <div class="absolute inset-0 bg-gradient-to-t from-steppe-50 via-steppe-50/30 to-transparent"></div>
+        <div class="absolute inset-0 opacity-5" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><path d=%22M20 0 L40 20 L20 40 L0 20Z%22 fill=%22none%22 stroke=%22%23d4af37%22 stroke-width=%221%22/></svg>');"></div>
+    </div>
+
+    <div class="relative z-10 text-center px-6 max-w-4xl mx-auto" style="animation: fadeIn 1.4s ease-out forwards;">
+        <span class="inline-block px-5 py-1.5 mb-6 border border-accent-gold text-accent-gold rounded-full text-xs font-bold tracking-widest uppercase" data-i18n="ancient_legacy">Древнее Наследие</span>
+        <h1 class="text-6xl md:text-8xl font-display font-bold text-steppe-900 mb-6 drop-shadow-sm leading-tight" data-i18n="hero_title">Святилище Кочевника</h1>
+        <p class="text-xl md:text-2xl font-light text-steppe-800 italic leading-relaxed" data-i18n="hero_subtitle">"Войди в Кийіз Үй — шедевр мобильности, крепость против стихий и микрокосм вселенной."</p>
+        <div class="mt-14 flex justify-center">
+            <a href="#explore" class="group flex flex-col items-center gap-2 text-steppe-600 hover:text-accent-gold transition-colors">
+                <span class="text-xs font-bold uppercase tracking-widest" data-i18n="begin_journey">Начать Путешествие</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+            </a>
+        </div>
+    </div>
+</header>
+
+<main id="explore" class="relative z-10">
+
+    <section class="py-28 px-6 md:px-12 max-w-5xl mx-auto reveal">
+        <div class="grid md:grid-cols-2 gap-16 items-center">
+            <div class="space-y-6">
+                <h2 class="text-4xl font-display text-steppe-900 leading-tight" data-i18n="intro_title">История, Ведомая Звёздами</h2>
+                <p class="text-lg text-steppe-800 leading-relaxed" data-i18n="intro_p1">
+                    Более 2500 лет казахская юрта безмолвно свидетельствует о великих миграциях евразийской степи. Это не просто конструкция из дерева и войлока — это родовое наследие, рождённое ветром и отточенное мудростью кочевников.
+                </p>
+                <p class="text-lg text-steppe-800 leading-relaxed" data-i18n="intro_p2">
+                    Корни <span class="text-accent-terracotta font-semibold">Кийіз Үй</span> (буквально «войлочный дом») уходят глубоко в древность. Впервые упомянутое историком Геродотом в V веке до н.э., это гениальное жилище позволяло скифским и гуннским племенам преодолевать необъятные расстояния степи.
+                </p>
+            </div>
+            <div class="relative">
+                <div class="absolute -inset-4 bg-steppe-200/50 rounded-2xl rotate-3 transition-transform duration-500 hover:rotate-1"></div>
+                <img src="https://opal.google/board/blobs/4377f0d2-b4e9-4659-ab0a-4b43c9398cba" alt="Yurt Interior Detail" class="relative z-10 w-full h-auto rounded-xl shadow-2xl object-cover aspect-[4/5] hover:shadow-3xl transition-all duration-500">
+            </div>
+        </div>
+    </section>
+
+    <section class="py-20 bg-steppe-900 text-white overflow-hidden reveal">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl md:text-5xl font-display mb-4" data-i18n="anatomy_title">Анатомия Бесконечного</h2>
+                <p class="text-steppe-300 max-w-2xl mx-auto" data-i18n="anatomy_sub">Нажмите и перетащите, чтобы исследовать архитектурное чудо. Нажмите на элементы, чтобы узнать об их культурном и функциональном значении.</p>
+            </div>
+
+            <div id="interactive-yurt-container">
+                <div id="loading-3d" class="absolute inset-0 flex items-center justify-center bg-steppe-900 z-30">
+                    <div class="flex flex-col items-center gap-4">
+                        <div class="w-14 h-14 border-4 border-accent-gold border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-steppe-400 font-semibold tracking-widest uppercase text-xs" data-i18n="assembling">Собираем Юрту...</span>
+                    </div>
+                </div>
+
+                <div id="ui-hint" class="absolute top-5 left-5 z-20 pointer-events-none">
+                    <div class="glass text-steppe-900 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest" data-i18n="controls_hint">[ ЛКМ: Вращение ] &nbsp; [ Колёсико: Зум ]</div>
+                </div>
+
+                <!-- Боковое меню частей юрты -->
+                <div id="parts-menu" class="absolute left-4 top-1/2 z-20 flex flex-col gap-2" style="transform:translateY(-50%);">
+                    <button onclick="selectPart('shanyraq')" id="btn-shanyraq" class="part-btn" data-key="shanyraq">
+                        <span class="part-icon">☀</span>
+                        <span class="part-label" data-i18n="comp_shanyraq_title">Шаңырақ</span>
+                    </button>
+                    <button onclick="selectPart('uyq')" id="btn-uyq" class="part-btn" data-key="uyq">
+                        <span class="part-icon">⟋</span>
+                        <span class="part-label" data-i18n="comp_uyq_title">Уық</span>
+                    </button>
+                    <button onclick="selectPart('kerege')" id="btn-kerege" class="part-btn" data-key="kerege">
+                        <span class="part-icon">⧖</span>
+                        <span class="part-label" data-i18n="comp_kerege_title">Кереге</span>
+                    </button>
+                    <button onclick="selectPart('tuyyrlyk')" id="btn-tuyyrlyk" class="part-btn" data-key="tuyyrlyk">
+                        <span class="part-icon">◎</span>
+                        <span class="part-label" data-i18n="comp_tuyyrlyk_title">Туырлык</span>
+                    </button>
+                    <button onclick="selectPart(null)" id="btn-reset" class="part-btn-reset">
+                        ✕ <span data-i18n="reset_view">Сбросить</span>
+                    </button>
+                </div>
+
+                <div id="yurt-canvas-container" class="w-full h-full"></div>
+
+                <!-- Info Card -->
+                <div id="info-card" class="yurt-info-overlay p-6 rounded-2xl shadow-2xl" style="background:rgba(17,21,25,0.95);backdrop-filter:blur(16px);border:1px solid rgba(212,175,55,0.3);border-left:4px solid #d4af37;">
+                    <h3 id="card-title" class="text-xl font-display mb-2" style="color:#d4af37;"></h3>
+                    <div id="card-desc" class="text-sm leading-relaxed space-y-2" style="color:#e8dcc8;"></div>
+                    <div class="mt-4 pt-3 flex justify-between items-center" style="border-top:1px solid rgba(212,175,55,0.2);">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[10px] font-bold uppercase tracking-tighter" style="color:#d4af37;" data-i18n="trad_eng">Традиционная Инженерия</span>
+                            <button onclick="window.speakDescription && window._selectedKey && window.speakDescription(window._selectedKey)" title="Озвучить" style="color:#d4af37;opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/></svg>
+                            </button>
+                        </div>
+                        <button onclick="selectPart(null)" style="color:#888;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════ NOMAD SANCTUARY ═══════ -->
+    <section class="py-28 px-6 md:px-12 bg-white reveal">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col md:flex-row gap-16 items-center">
+                <div class="md:w-1/2 order-2 md:order-1 overflow-hidden rounded-2xl shadow-xl">
+                    <img src="https://opal.google/board/blobs/9c8d51d3-2122-4520-a0fe-969efcf2efb5" alt="Nomadic Setting" class="w-full grayscale-[20%] hover:grayscale-0 transition-all duration-700 hover:scale-105">
+                </div>
+                <div class="md:w-1/2 order-1 md:order-2 space-y-8">
+                    <div class="flex items-center gap-4">
+                        <div class="h-px w-12 bg-accent-gold"></div>
+                        <h2 class="text-3xl font-display font-bold uppercase tracking-wide text-steppe-900" data-i18n="sanctuary_title">Святилище Кочевника</h2>
+                    </div>
+                    <p class="text-lg text-steppe-700 italic border-l-4 border-steppe-200 pl-6" data-i18n="sanctuary_quote">
+                        "Юрта — не просто жилище; это философия жизни в гармонии с горизонтом. Внутри круга нет углов — символ равенства и открытости."
+                    </p>
+                    <p class="text-steppe-800 leading-relaxed" data-i18n="sanctuary_p">
+                        Войдите, но берегите ноги: <strong>Босага</strong> (порог) священна, и наступить на неё — значит проявить неуважение к защите дома. Пространство подчиняется древним социальным ритмам.
+                    </p>
+                    <div class="grid grid-cols-2 gap-6 text-sm">
+                        <div class="p-4 bg-steppe-50 rounded-xl border border-steppe-100 hover:border-accent-gold transition-colors">
+                            <span class="font-bold text-accent-deepblue block mb-1 uppercase tracking-widest text-[10px]">Тор</span>
+                            <span data-i18n="tor_desc">Место почёта для старейшин и гостей, напротив двери.</span>
+                        </div>
+                        <div class="p-4 bg-steppe-50 rounded-xl border border-steppe-100 hover:border-accent-gold transition-colors">
+                            <span class="font-bold text-accent-deepblue block mb-1 uppercase tracking-widest text-[10px]">Ошақ</span>
+                            <span data-i18n="oshak_desc">Центральный очаг — духовное и функциональное сердце дома.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════ GALLERY ═══════ -->
+    <section class="py-28 bg-steppe-50 px-6 reveal">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-display text-steppe-900 mb-4" data-i18n="gallery_title">Шёпоты Степи</h2>
+                <p class="text-steppe-600" data-i18n="gallery_sub">Визуальные свидетельства живого наследия.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6 auto-rows-[300px]">
+                <div class="lg:col-span-8 group overflow-hidden rounded-2xl relative shadow-lg">
+                    <img src="https://opal.google/board/blobs/f0094782-6503-43c8-ab9f-125f24b8a3a4" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Yurt Exterior">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                        <p class="text-white font-medium text-lg italic" data-i18n="gal1">Белый Войлочный Дом Степи</p>
+                    </div>
+                </div>
+                <div class="lg:col-span-4 group overflow-hidden rounded-2xl relative shadow-lg">
+                    <img src="https://opal.google/board/blobs/a45bb0be-22c6-4607-8968-430733594530" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Shanyraq Detail">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                        <p class="text-white font-medium text-lg italic" data-i18n="gal2">Священный Шаңырақ</p>
+                    </div>
+                </div>
+                <div class="lg:col-span-4 group overflow-hidden rounded-2xl relative shadow-lg">
+                    <img src="https://opal.google/board/blobs/4377f0d2-b4e9-4659-ab0a-4b43c9398cba" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Interior Details">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                        <p class="text-white font-medium text-lg italic" data-i18n="gal3">Инженерия и Текстиль</p>
+                    </div>
+                </div>
+                <div class="lg:col-span-8 group overflow-hidden rounded-2xl relative shadow-lg">
+                    <img src="https://opal.google/board/blobs/9c8d51d3-2122-4520-a0fe-969efcf2efb5" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Nomadic Encampment">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                        <p class="text-white font-medium text-lg italic" data-i18n="gal4">Культура в Движении</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════ SACRED CROWN ═══════ -->
+    <section class="py-28 px-6 md:px-12 bg-white reveal">
+        <div class="max-w-3xl mx-auto text-center space-y-8">
+            <div class="inline-block w-16 h-1 bg-accent-gold rounded-full"></div>
+            <h2 class="text-4xl md:text-5xl font-display text-steppe-900" data-i18n="crown_title">Священная Корона</h2>
+            <p class="text-xl text-steppe-800 leading-relaxed italic" data-i18n="crown_quote">
+                "На самой вершине юрты сидит Шаңырақ — деревянная корона. Для кочевника смотреть вверх через Шаңырақ — значит смотреть в глаз вселенной."
+            </p>
+            <div class="text-left text-steppe-700 space-y-6">
+                <p data-i18n="crown_p1">Шаңырақ — структурный замок, дымоход центрального очага и окно к звёздам. В бурю его закрывает <strong>Тундік</strong> — тяжёлый войлочный клапан.</p>
+                <p data-i18n="crown_p2">Символически это самый священный объект казахской культуры. Он передаётся от отца к младшему сыну, олицетворяя неугасимое пламя рода.</p>
+            </div>
+            <div class="pt-10">
+                <a href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;" class="text-accent-gold font-bold uppercase tracking-widest text-xs hover:text-steppe-900 transition-colors" data-i18n="back_top">К Горизонту ↑</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Footer -->
+<footer class="bg-steppe-900 text-steppe-400 py-14 px-6 text-center border-t border-steppe-800">
+    <p class="text-sm font-medium tracking-widest uppercase mb-3 text-steppe-200" data-i18n="footer_title">Опыт Казахской Юрты</p>
+    <p class="text-xs" data-i18n="footer_sub">Прочувствуй наследие. Береги святилище.</p>
+</footer>
+
+<!-- ═══════════════════════════════ SCRIPTS ═══════════════════════════════ -->
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ── Component data (populated by i18n) ──────────────────────────────────────
+const componentData = {
+    shanyraq: { key:'shanyraq' },
+    uyq:      { key:'uyq' },
+    kerege:   { key:'kerege' },
+    tuyyrlyk: { key:'tuyyrlyk' },
+    door:     { key:'door' },
+    ground:   { key:'ground' }
+};
+
+let scene, camera, renderer, controls, raycaster, mouse;
+let highlightedMesh = null;
+const originalColors = new WeakMap();
+const container = document.getElementById('yurt-canvas-container');
+const loadingScreen = document.getElementById('loading-3d');
+const infoCard = document.getElementById('info-card');
+const cardTitle = document.getElementById('card-title');
+const cardDesc = document.getElementById('card-desc');
+
+// ── Ornament texture generator ───────────────────────────────────────────────
+function makeOrnamentTexture(bg, line, size=256) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, size, size);
+
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1.5;
+
+    // Qoshqar müyiz (ram horn) pattern repeated
+    const S = size / 4;
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            const ox = col * S, oy = row * S;
+            ctx.beginPath();
+            // Diamond
+            ctx.moveTo(ox + S/2, oy + 2);
+            ctx.lineTo(ox + S-2, oy + S/2);
+            ctx.lineTo(ox + S/2, oy + S-2);
+            ctx.lineTo(ox + 2, oy + S/2);
+            ctx.closePath();
+            ctx.stroke();
+            // Inner swirl
+            ctx.beginPath();
+            ctx.arc(ox + S/2, oy + S/2, S/6, 0, Math.PI*1.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(ox + S/2, oy + S/2, S/10, 0, Math.PI*2);
+            ctx.stroke();
+            // Corner hooks
+            const h = S/5;
+            [[ox+2,oy+2],[ox+S-2,oy+2],[ox+2,oy+S-2],[ox+S-2,oy+S-2]].forEach(([x,y]) => {
+                ctx.beginPath();
+                ctx.arc(x, y, h, 0, Math.PI/2);
+                ctx.stroke();
+            });
+        }
+    }
+    return new THREE.CanvasTexture(c);
+}
+
+function makeFeltTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#f0e8d5';
+    ctx.fillRect(0,0,512,512);
+    // Noise-like felt
+    for(let i=0;i<8000;i++){
+        ctx.beginPath();
+        ctx.strokeStyle = `rgba(${100+Math.random()*80},${70+Math.random()*50},${30+Math.random()*30},0.15)`;
+        ctx.lineWidth = Math.random()*1.5;
+        const x=Math.random()*512, y=Math.random()*512;
+        ctx.moveTo(x,y);
+        ctx.lineTo(x+Math.random()*8-4, y+Math.random()*8-4);
+        ctx.stroke();
+    }
+    // Ornament overlay
+    const ornTex = makeOrnamentTexture('transparent','rgba(166,77,50,0.18)',128);
+    // Not compositing here — separate map
+    return new THREE.CanvasTexture(c);
+}
+
+function makeLatticeTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#7e5835';
+    ctx.fillRect(0,0,256,256);
+    ctx.strokeStyle = '#c5a870';
+    ctx.lineWidth = 2;
+    const cell = 16;
+    for(let i=0;i<256/cell;i++){
+        for(let j=0;j<256/cell;j++){
+            ctx.beginPath();
+            ctx.moveTo(i*cell, j*cell + cell/2);
+            ctx.lineTo(i*cell + cell/2, j*cell);
+            ctx.lineTo(i*cell + cell, j*cell + cell/2);
+            ctx.lineTo(i*cell + cell/2, j*cell + cell);
+            ctx.closePath();
+            ctx.stroke();
+        }
+    }
+    return new THREE.CanvasTexture(c);
+}
+
+function makeDoorTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 384;
+    const ctx = c.getContext('2d');
+    // Base wood
+    const grad = ctx.createLinearGradient(0,0,256,0);
+    grad.addColorStop(0,'#5d2906'); grad.addColorStop(0.5,'#7e3d0a'); grad.addColorStop(1,'#5d2906');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,256,384);
+    // Panel lines
+    ctx.strokeStyle = '#3a1a02'; ctx.lineWidth = 2;
+    ctx.strokeRect(16,16,224,160); ctx.strokeRect(16,200,224,168);
+    // Ornament on each panel
+    const drawPanel = (px,py,pw,ph) => {
+        ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px+pw/2, py+4); ctx.lineTo(px+pw-4, py+ph/2);
+        ctx.lineTo(px+pw/2, py+ph-4); ctx.lineTo(px+4, py+ph/2);
+        ctx.closePath(); ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(px+pw/2, py+ph/2, pw/6, 0, Math.PI*2); ctx.stroke();
+    };
+    drawPanel(24,24,208,144); drawPanel(24,208,208,152);
+    return new THREE.CanvasTexture(c);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111519);
+    scene.fog = new THREE.FogExp2(0x111519, 0.006);
+
+    camera = new THREE.PerspectiveCamera(45, container.offsetWidth / container.offsetHeight, 0.1, 1000);
+    camera.position.set(30, 18, 30);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.sortObjects = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    // Пересчитываем размер после добавления в DOM — на случай если что-то сдвинулось
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w > 0 && h > 0) {
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    }
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0xfff5e1, 2.5);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xffffff, 4.0);
+    sun.position.set(20, 40, 20);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 200;
+    sun.shadow.camera.top = sun.shadow.camera.right = 40;
+    sun.shadow.camera.bottom = sun.shadow.camera.left = -40;
+    sun.shadow.bias = -0.0005;
+    scene.add(sun);
+
+    const rim = new THREE.PointLight(0xd4af37, 1.2, 80);
+    rim.position.set(-20, 20, -20);
+    scene.add(rim);
+
+    const fill = new THREE.PointLight(0x4a6fa5, 0.5, 60);
+    fill.position.set(0, 25, -25);
+    scene.add(fill);
+
+    // Inner fire glow
+    const fireLight = new THREE.PointLight(0xff6600, 1.8, 25);
+    fireLight.position.set(0, 2, 0);
+    scene.add(fireLight);
+    window._fireLight = fireLight;
+
+    // Controls
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.zoomSpeed = 0.6;
+    controls.rotateSpeed = 0.6;
+    controls.minDistance = 5;
+    controls.maxDistance = 120;
+    controls.maxPolarAngle = Math.PI / 2.2;  // не дальше ~82° — платформа всегда видна
+    controls.minPolarAngle = 0.1;            // не прямо сверху
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.4;
+    controls.enableZoom = true;
+    controls.screenSpacePanning = false;
+
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2(-9999, -9999);
+
+    loadYurtModels(); // async — скроет лоадер сам после загрузки всех GLB
+
+    container.addEventListener('mousemove', onMouseMove);
+    container.addEventListener('click', onClick);
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('resize', onWindowResize);
+
+    animate();
+}
+
+// ── GLB model map: filename → raycast key ────────────────────────────────────
+const GLB_PARTS = [
+    { file: 'shanyraq.glb', key: 'shanyraq' },
+    { file: 'roof.glb',     key: 'uyq'      },
+    { file: 'walls.glb',    key: 'kerege'   },
+    { file: 'wool.glb',     key: 'tuyyrlyk' },
+];
+
+// Highlight colours per part (emissive hex when hovered)
+const PART_HIGHLIGHT = {
+    shanyraq:  0x6b4800,
+    uyq:       0x3a2800,
+    kerege:    0x3a2800,
+    tuyyrlyk:  0x3a2800,
+};
+
+async function loadYurtModels() {
+    const loader = new GLTFLoader();
+    const yurtGroup = new THREE.Group();
+    const glbGroup = new THREE.Group(); // отдельно только GLB — для правильного bbox
+
+    // ── Load each GLB part ────────────────────────────────────────────────────
+    const loadPromises = GLB_PARTS.map(({ file, key }) =>
+        new Promise((resolve) => {
+            loader.load(
+                `./${file}`,
+                (gltf) => {
+                    const model = gltf.scene;
+                    model.traverse(child => {
+                        if (child.isMesh) {
+                            child.userData.key = key;
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            if (child.material && !Array.isArray(child.material)) {
+                                child.material = child.material.clone();
+                                child._matCloned = true;
+                                child._origMat = child.material;
+                                if (key === 'tuyyrlyk') {
+                                    child.material.side = THREE.DoubleSide;
+                                }
+                                child.material.transparent = false;
+                                child.material.opacity = 1.0;
+                                child._origOpacity     = 1.0;
+                                child._origTransparent = false;
+                                child._origSide        = child.material.side;
+                                if (!child.material.emissive)
+                                    child.material.emissive = new THREE.Color(0x000000);
+                            }
+                        }
+                    });
+                    glbGroup.add(model);
+                    resolve();
+                },
+                undefined,
+                (err) => {
+                    console.warn(`Не удалось загрузить ${file}:`, err);
+                    resolve();
+                }
+            );
+        })
+    );
+
+    await Promise.all(loadPromises);
+
+    // ── Масштаб и центровка только по GLB-мешам (без ground) ─────────────────
+    const bbox = new THREE.Box3().setFromObject(glbGroup);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 18.0;
+
+    if (maxDim > 0) {
+        const scale = targetSize / maxDim;
+
+        glbGroup.scale.setScalar(scale);
+        const bbox2 = new THREE.Box3().setFromObject(glbGroup);
+        const c2 = new THREE.Vector3();
+        bbox2.getCenter(c2);
+        glbGroup.position.x = -c2.x;
+        glbGroup.position.z = -c2.z;
+        glbGroup.position.y = -bbox2.min.y;
+
+        const modelHeight = bbox2.max.y - bbox2.min.y;
+        const lookAtY = modelHeight * 0.4;
+        const camDist = targetSize * 1.5;
+        camera.position.set(camDist, lookAtY + targetSize * 0.3, camDist);
+        controls.target.set(0, lookAtY, 0);
+        controls.minDistance = targetSize * 0.9;
+        controls.maxDistance = targetSize * 2.2;
+        controls.update();
+    }
+
+    yurtGroup.add(glbGroup);
+
+    // ── Ground plane (после масштаба, чтобы правильно подобрать размер) ──────
+    const groundRadius = targetSize * 0.8;
+    const groundGeo = new THREE.CircleGeometry(groundRadius, 64);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.95 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    ground.userData.key = 'ground';
+    yurtGroup.add(ground);
+
+    scene.add(yurtGroup);
+    window._yurtGroup = yurtGroup;
+
+    // Скрываем экран загрузки
+    loadingScreen.style.opacity = '0';
+    loadingScreen.style.transition = 'opacity 0.6s';
+    setTimeout(() => loadingScreen.style.display = 'none', 600);
+}
+
+function onMouseMove(e) {
+    const rect = container.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+    _mouseNeedsRaycast = true;
+}
+
+function onTouchEnd(e) {
+    if (e.changedTouches.length > 0) {
+        const t = e.changedTouches[0];
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((t.clientX - rect.left) / container.offsetWidth) * 2 - 1;
+        mouse.y = -((t.clientY - rect.top) / container.offsetHeight) * 2 + 1;
+        onClick();
+    }
+}
+
+// ── MP3 аудио описаний ───────────────────────────────────────────────────────
+const _audioPlayer = new Audio();
+_audioPlayer.preload = 'none';
+
+// Маппинг ключей на имена файлов (tuyyrlyk → tuirlik как в файлах)
+const AUDIO_FILE_MAP = {
+    shanyraq: 'shanyraq',
+    uyq:      'uyq',
+    kerege:   'kerege',
+    tuyyrlyk: 'tuirlik',
+};
+
+function speakDescription(key) {
+    const lang = window._currentLang || 'ru';
+    const base = AUDIO_FILE_MAP[key];
+    if (!base) return;
+    const src = `./${base}_${lang}.mp3`;
+    _audioPlayer.pause();
+    _audioPlayer.currentTime = 0;
+    _audioPlayer.src = src;
+    _audioPlayer.play().catch(() => {
+        // Файл не найден — молча игнорируем
+    });
+}
+
+function stopSpeech() {
+    _audioPlayer.pause();
+    _audioPlayer.currentTime = 0;
+}
+
+window.speakDescription = speakDescription;
+window.stopSpeech = stopSpeech;
+
+function getComponentData(key) {
+    const lang = window._currentLang || 'ru';
+    const d = (window._i18nData || {})[lang] || {};
+    return {
+        title: d[`comp_${key}_title`] || key,
+        desc: d[`comp_${key}_desc`] || ''
+    };
+}
+
+let _selectedKey = null;
+
+// Применяет прозрачность: выбранная часть яркая, остальные полупрозрачные
+function applyPartSelection(key) {
+    if (!window._yurtGroup) return;
+    window._yurtGroup.traverse(obj => {
+        if (!obj.isMesh) return;
+        const k = obj.userData.key;
+        if (!k || k === 'ground') return;
+
+        if (key === null) {
+            if (obj._origMat) obj.material = obj._origMat;
+            obj.material.transparent = false;
+            obj.material.opacity = 1.0;
+            obj.material.depthWrite = true;
+            obj.renderOrder = 0;
+            if (obj.material.emissive) obj.material.emissive.setHex(0x000000);
+            originalColors.delete(obj);
+
+        } else if (k === key) {
+            if (obj._origMat) obj.material = obj._origMat;
+            obj.material.transparent = false;
+            obj.material.opacity = 1.0;
+            obj.material.depthWrite = true;
+            obj.renderOrder = 10;
+            // Туырлык белый — ярко-оранжевый отсвет хорошо виден
+            // Остальные тёмные — золотой
+            const highlightColor = (k === 'tuyyrlyk') ? 0x330033 : 0x332200;
+            if (obj.material.emissive) obj.material.emissive.setHex(highlightColor);
+
+        } else {
+            // Остальные — почти невидимые ghost
+            if (!obj._ghostMat) {
+                obj._ghostMat = new THREE.MeshBasicMaterial({
+                    color: 0x888888,
+                    transparent: true,
+                    opacity: 0.04,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
+            obj.material = obj._ghostMat;
+            obj.renderOrder = 1;
+        }
+        obj.material.needsUpdate = true;
+    });
+}
+
+function selectPart(key) {
+    _selectedKey = key;
+    window._selectedKey = key;
+
+    // Обновляем кнопки
+    document.querySelectorAll('.part-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.key === key);
+    });
+
+    applyPartSelection(key);
+
+    if (key) {
+        _flashKey = key;
+        _flashStart = Date.now();
+        showCard(key);
+        speakDescription(key);
+        controls.autoRotate = false;
+    } else {
+        stopSpeech();
+        hideCard();
+        controls.autoRotate = true;
+    }
+}
+window.selectPart = selectPart;
+
+function onClick() {
+    // Выбор только через кнопки меню, клик по юрте ничего не делает
+}
+
+function showCard(key) {
+    const data = getComponentData(key);
+    cardTitle.innerText = data.title;
+    cardDesc.innerHTML = `<p>${data.desc}</p>`;
+    infoCard.classList.add('active');
+}
+
+window.hideCard = () => {
+    stopSpeech();
+    infoCard.classList.remove('active');
+    controls.autoRotate = true;
+    _selectedKey = null;
+    _prevHoveredKey = null;
+    hoveredKey = null;
+    document.querySelectorAll('.part-btn').forEach(btn => btn.classList.remove('active'));
+    applyPartSelection(null);
+};
+
+function onWindowResize() {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+}
+
+let hoveredKey = null;
+let _mouseNeedsRaycast = false;
+let _prevHoveredKey = null;
+let _flashKey = null;
+let _flashStart = 0;
+const FLASH_DURATION = 600; // мс — длительность мигания
+
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+
+    // Fire flicker
+    const fl = window._fireLight;
+    if (fl && Math.random() < 0.33) {
+        fl.intensity = 1.4 + Math.sin(Date.now() * 0.007) * 0.5 + Math.random() * 0.3;
+    }
+
+    // ── Мигание при выборе ────────────────────────────────────────────────────
+    if (_flashKey) {
+        const elapsed = Date.now() - _flashStart;
+        if (elapsed < FLASH_DURATION) {
+            const t = elapsed / FLASH_DURATION;
+            const pulse = Math.abs(Math.sin(t * Math.PI * 3));
+            scene.traverse(obj => {
+                if (obj.isMesh && obj.userData.key === _flashKey && obj.material && obj.material.emissive) {
+                    if (_flashKey === 'tuyyrlyk') {
+                        obj.material.emissive.setRGB(pulse * 0.9, 0, pulse * 0.9); // ярко-пурпурный
+                    } else {
+                        obj.material.emissive.setRGB(pulse * 0.8, pulse * 0.5, 0);
+                    }
+                }
+            });
+        } else {
+            scene.traverse(obj => {
+                if (obj.isMesh && obj.userData.key === _flashKey && obj.material && obj.material.emissive) {
+                    const finalColor = (_flashKey === 'tuyyrlyk') ? 0x330033 : 0x221500;
+                    obj.material.emissive.setHex(finalColor);
+                }
+            });
+            _flashKey = null;
+        }
+    }
+
+    // Hover highlight — только когда ничего не выбрано
+    if (_mouseNeedsRaycast && _selectedKey === null) {
+        _mouseNeedsRaycast = false;
+        raycaster.setFromCamera(mouse, camera);
+        const hits = raycaster.intersectObjects(scene.children, true);
+
+        let newKey = null;
+        if (hits.length > 0) {
+            const k = hits[0].object.userData.key;
+            if (k && k !== 'ground') newKey = k;
+        }
+
+        if (newKey !== _prevHoveredKey) {
+            if (_prevHoveredKey) {
+                scene.traverse(obj => {
+                    if (obj.isMesh && obj.userData.key === _prevHoveredKey && originalColors.has(obj)) {
+                        const mat = obj.material;
+                        if (mat && mat.emissive) mat.emissive.setHex(originalColors.get(obj));
+                    }
+                });
+            }
+            if (newKey) {
+                scene.traverse(obj => {
+                    if (obj.isMesh && obj.userData.key === newKey) {
+                        const mat = obj.material;
+                        if (!mat) return;
+                        if (!originalColors.has(obj)) {
+                            if (!obj._matCloned) { obj.material = mat.clone(); obj._matCloned = true; }
+                            if (!obj.material.emissive) obj.material.emissive = new THREE.Color(0x000000);
+                            originalColors.set(obj, obj.material.emissive.getHex());
+                        }
+                        obj.material.emissive.setHex(0x443300);
+                    }
+                });
+            }
+            _prevHoveredKey = newKey;
+            hoveredKey = newKey;
+            renderer.domElement.style.cursor = newKey ? 'pointer' : 'grab';
+        }
+    } else if (_selectedKey !== null) {
+        _mouseNeedsRaycast = false;
+        _prevHoveredKey = null;
+        hoveredKey = null;
+        renderer.domElement.style.cursor = 'grab';
+    }
+
+    renderer.render(scene, camera);
+}
+
+// ── Надёжный запуск Three.js ─────────────────────────────────────────────────
+// Используем ResizeObserver — он срабатывает только когда контейнер
+// реально имеет ненулевые пиксельные размеры
+let _threeInited = false;
+
+function _tryInit() {
+    if (_threeInited) return;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w > 10 && h > 10) {
+        _threeInited = true;
+        if (_ro) _ro.disconnect();
+        init();
+    }
+}
+
+let _ro = null;
+if (typeof ResizeObserver !== 'undefined') {
+    _ro = new ResizeObserver(_tryInit);
+    _ro.observe(container);
+} else {
+    // Фолбэк для старых браузеров
+    window.addEventListener('scroll', _tryInit, { once: true });
+}
+// Попробуем сразу — вдруг контейнер уже готов
+setTimeout(_tryInit, 0);
+
+// Expose for i18n updates
+window._refreshCardData = () => {
+    if (_selectedKey) showCard(_selectedKey);
+};
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// I18N DATA
+// ═══════════════════════════════════════════════════════════════
+window._i18nData = {
+    ru: {
+        ancient_legacy: 'Древнее Наследие',
+        hero_title: 'Святилище Кочевника',
+        hero_subtitle: '"Войди в Кийіз Үй — шедевр мобильности, крепость против стихий и микрокосм вселенной."',
+        begin_journey: 'Начать Путешествие',
+        intro_title: 'История, Ведомая Звёздами',
+        intro_p1: 'Более 2500 лет казахская юрта безмолвно свидетельствует о великих миграциях евразийской степи. Это не просто конструкция из дерева и войлока — это родовое наследие, рождённое ветром и отточенное мудростью кочевников.',
+        intro_p2: 'Корни <span class="text-accent-terracotta font-semibold">Кийіз Үй</span> (буквально «войлочный дом») уходят глубоко в древность. Впервые упомянутое историком Геродотом в V веке до н.э., это гениальное жилище позволяло племенам преодолевать необъятные расстояния степи.',
+        anatomy_title: 'Анатомия Бесконечного',
+        anatomy_sub: 'Нажмите и перетащите, чтобы исследовать архитектурное чудо. Нажмите на элементы для описания.',
+        assembling: 'Собираем Юрту...',
+        controls_hint: '[ ЛКМ: Вращение ] — [ Колёсико: Зум ]',
+        trad_eng: 'Традиционная Инженерия',
+        sanctuary_title: 'Святилище Кочевника',
+        sanctuary_quote: '"Юрта — не просто жилище; это философия жизни в гармонии с горизонтом. Внутри круга нет углов — символ равенства и открытости."',
+        sanctuary_p: 'Войдите, но берегите ноги: <strong>Босага</strong> (порог) священна, и наступить на неё — значит проявить неуважение к защите дома. Пространство подчиняется древним социальным ритмам.',
+        tor_desc: 'Место почёта для старейшин и гостей, напротив двери.',
+        oshak_desc: 'Центральный очаг — духовное и функциональное сердце дома.',
+        gallery_title: 'Шёпоты Степи',
+        gallery_sub: 'Визуальные свидетельства живого наследия.',
+        gal1: 'Белый Войлочный Дом Степи',
+        gal2: 'Священный Шаңырақ',
+        gal3: 'Инженерия и Текстиль',
+        gal4: 'Культура в Движении',
+        crown_title: 'Священная Корона',
+        crown_quote: '"На самой вершине юрты сидит Шаңырақ — деревянная корона. Для кочевника смотреть вверх через Шаңырақ — значит смотреть в глаз вселенной."',
+        crown_p1: 'Шаңырақ — структурный замок, дымоход центрального очага и окно к звёздам. В бурю его закрывает <strong>Тундік</strong> — тяжёлый войлочный клапан.',
+        crown_p2: 'Символически это самый священный объект казахской культуры. Он передаётся от отца к младшему сыну, олицетворяя неугасимое пламя рода.',
+        back_top: 'К Горизонту ↑',
+        footer_title: 'Опыт Казахской Юрты',
+        footer_sub: 'Прочувствуй наследие. Береги святилище.',
+        steppe_ambience: 'Степной Амбиент',
+        playlist: 'Плейлист',
+        reset_view: 'Сбросить',
+        comp_shanyraq_title: 'Шаңырақ (шаңырақ)',
+        comp_shanyraq_desc: 'Деревянная корона юрты. Выполняет роль дымохода и окна, символизирует преемственность семьи. Это самая священная часть дома, традиционно передаваемая от отца к младшему сыну.',
+        comp_uyq_title: 'Уық (уық)',
+        comp_uyq_desc: 'Длинные изогнутые опоры кровли, соединяющие стены с короной. Их особый изгиб создаёт характерный купол юрты, устойчивый к сильным ветрам без центральной опоры.',
+        comp_kerege_title: 'Кереге (кереге)',
+        comp_kerege_desc: 'Складные деревянные решётчатые секции, образующие стены. Изготовленные из ивы, эти секции раскладываются и складываются, определяя размер и мобильность жилища.',
+        comp_tuyyrlyk_title: 'Туырлык (туырлык)',
+        comp_tuyyrlyk_desc: 'Толстое войлочное покрытие из шерсти. Обеспечивает теплоизоляцию и защиту, ограждая жильцов от сурового климата степи благодаря водоотталкивающим свойствам.',
+        comp_door_title: 'Сықырлауық (сықырлауық)',
+        comp_door_desc: 'Резная деревянная дверь. Её название отражает «скрип» дерева. Порог (босага) священен — он символизирует переход в безопасность и гостеприимство.'
+    },
+    kz: {
+        ancient_legacy: 'Ежелгі Мұра',
+        hero_title: 'Көшпелінің Мекені',
+        hero_subtitle: '"Кійіз Үйге кір — жылжымалылықтың шедеврі, стихиядан қорған, ғаламның шағын бейнесі."',
+        begin_journey: 'Сапарды Бастау',
+        intro_title: 'Жұлдыздармен Жазылған Тарих',
+        intro_p1: '2500 жылдан астам уақыт бойы қазақ киіз үйі Еуразия даласының ұлы көші-қонын үнсіз куә болды. Бұл жай ғана ағаш пен киізден жасалған құрылыс емес — бұл желден туған, көшпелілердің даналығымен жетілдірілген ата-бабалар мұрасы.',
+        intro_p2: '<span class="text-accent-terracotta font-semibold">Кійіз Үй</span> («киіз үй» дегенді білдіреді) тамыры терең ежелгі заманға кетеді. Грек тарихшысы Геродот б.з.д. V ғасырда бірінші рет атап өткен бұл данышпандық тұрғын үй тайпаларға даланың ұшы-қиыры жоқ кеңістіктерін кешуге мүмкіндік берді.',
+        anatomy_title: 'Шексіздіктің Анатомиясы',
+        anatomy_sub: 'Сүйреп жылжыту арқылы архитектуралық кереметті зерттеңіз. Сипаттама үшін элементтерді басыңыз.',
+        assembling: 'Киіз Үй Тігілуде...',
+        controls_hint: '[ СТМ: Айналдыру ] — [ Доңғалақ: Масштаб ]',
+        trad_eng: 'Дәстүрлі Инженерия',
+        sanctuary_title: 'Көшпелінің Мекені',
+        sanctuary_quote: '"Киіз үй — жай баспана емес; бұл горизонтпен үйлесімде өмір сүру философиясы. Шеңбер ішінде бұрыш жоқ — бұл теңдік пен ашықтықтың нышаны."',
+        sanctuary_p: 'Кіріңіз, бірақ аяғыңызды тыйыңыз: <strong>Босага</strong> (табалдырық) қасиетті, оны басу — үйдің қорғауына құрметсіздік. Кеңістік ежелгі әлеуметтік ырғақтарға бағынады.',
+        tor_desc: 'Есіктің қарсысында ересектер мен қонақтарға арналған құрметті орын.',
+        oshak_desc: 'Орталық ошақ — үйдің рухани және функционалдық жүрегі.',
+        gallery_title: 'Даланың Сыбыры',
+        gallery_sub: 'Тірі мұраның көрнекі дәлелдері.',
+        gal1: 'Даланың Ақ Киіз Үйі',
+        gal2: 'Қасиетті Шаңырақ',
+        gal3: 'Инженерия мен Тоқыма',
+        gal4: 'Қозғалыстағы Мәдениет',
+        crown_title: 'Қасиетті Тәж',
+        crown_quote: '"Киіз үйдің ең биік нүктесінде Шаңырақ — ағаш тәж отырады. Кочевник үшін Шаңырақтан жоғары қарау — ғаламның көзіне үңілу."',
+        crown_p1: 'Шаңырақ — құрылымдық кілт, орталық ошақтың мұржасы және жұлдыздарға терезе. Дауылда оны <strong>Тұндік</strong> — ауыр киіз клапан жауып тастайды.',
+        crown_p2: 'Символдық тұрғыдан бұл қазақ мәдениетіндегі ең қасиетті зат. Ол әкеден кіші ұлға беріліп, рудың ешқашан өшпейтін оты ретінде беріледі.',
+        back_top: 'Горизонтқа ↑',
+        footer_title: 'Қазақ Киіз Үй Тәжірибесі',
+        footer_sub: 'Мұраны сезін. Киелі орынды сақта.',
+        steppe_ambience: 'Дала Амбиенті',
+        playlist: 'Ойнату Тізімі',
+        reset_view: 'Қалпына келтіру',
+        comp_shanyraq_title: 'Шаңырақ (шаңырақ)',
+        comp_shanyraq_desc: 'Киіз үйдің ағаш тәжі. Мұрша мен терезе ретінде қызмет ете отырып, отбасы сабақтастығын білдіреді. Бұл үйдің ең қасиетті бөлігі, дәстүр бойынша кіші ұлға мұра болып қалады.',
+        comp_uyq_title: 'Уық (уық)',
+        comp_uyq_desc: 'Қабырғаларды тәжге жалғайтын ұзын, иілген шатыр бағаналары. Олардың бу арқылы иілген қисықтығы киіз үйдің орталық тіреусіз желге төзімді күмбезін жасайды.',
+        comp_kerege_title: 'Кереге (кереге)',
+        comp_kerege_desc: 'Қабырғаларды құрайтын бүктелетін ағаш тор секциялар. Талдан жасалған бұл секциялар кеңейіп және жиырылады, үйдің мөлшері мен жылжымалылығын анықтайды.',
+        comp_tuyyrlyk_title: 'Туырлық (туырлық)',
+        comp_tuyyrlyk_desc: 'Жүннен жасалған қалың киіз жабын. Су өткізбейтін қасиеттерімен даланың ауыр климатынан қорғайды.',
+        comp_door_title: 'Сықырлауық (сықырлауық)',
+        comp_door_desc: 'Ойылған ағаш есік. Атауы ағаштың «сықырлауынан» шыққан. Табалдырық (босага) қасиетті — ол қауіпсіздік пен қонақжайлылыққа өтуді білдіреді.'
+    },
+    en: {
+        ancient_legacy: 'Ancient Legacy',
+        hero_title: "The Nomad's Sanctuary",
+        hero_subtitle: '"Step into the Kiyiz Ui — a masterwork of portability, a fortress against the elements, and a microcosm of the universe."',
+        begin_journey: 'Begin the Journey',
+        intro_title: 'A History Guided by the Stars',
+        intro_p1: 'For over 2,500 years, the Kazakh yurt has stood as a silent witness to the migrations of the great Eurasian steppe. More than a structure of wood and felt, it is an ancestral legacy — a sanctuary born of the wind and refined by the wisdom of the nomads.',
+        intro_p2: 'The roots of the <span class="text-accent-terracotta font-semibold">Kiyiz Ui</span> ("felt house") run deep into antiquity. First recorded by Herodotus in the 5th century BC, these ingenious dwellings allowed tribes to navigate the vast distances of the steppe.',
+        anatomy_title: 'The Anatomy of the Infinite',
+        anatomy_sub: 'Click and drag to explore the architectural marvel. Click on components to discover their cultural significance.',
+        assembling: 'Assembling the Yurt...',
+        controls_hint: '[ Left Click: Rotate ] — [ Scroll: Zoom ]',
+        trad_eng: 'Traditional Engineering',
+        sanctuary_title: "The Nomad's Sanctuary",
+        sanctuary_quote: '"The yurt is more than a shelter; it is a philosophy of living in harmony with the horizon. Within the circle, there are no corners — symbolizing equality and openness."',
+        sanctuary_p: 'Step inside, but mind your feet: the <strong>Bosaga</strong> (threshold) is sacred, and to step upon it is to disrespect the home\'s protection. Space is governed by ancient social rhythms.',
+        tor_desc: 'The place of honor for elders and guests, directly opposite the door.',
+        oshak_desc: 'The central hearth, the spiritual and functional heart of the home.',
+        gallery_title: 'Whispers of the Steppe',
+        gallery_sub: 'Visual testimonies of a living heritage.',
+        gal1: 'The White Felt Home of the Steppe',
+        gal2: 'The Sacred Shanyraq',
+        gal3: 'Intricate Engineering & Textiles',
+        gal4: 'A Culture in Motion',
+        crown_title: 'The Sacred Crown',
+        crown_quote: '"At the very peak of the yurt sits the Shanyrak — the wooden crown. To a nomad, looking up through the Shanyrak is to look into the eye of the universe."',
+        crown_p1: 'The Shanyrak is the structural keystone, a chimney for the central hearth, and a window to the stars. In storms, it is shielded by the <strong>Tundik</strong>, a heavy felt flap.',
+        crown_p2: 'Symbolically, it is the most sacred object in Kazakh culture. It is passed from father to youngest son, representing the flame of the family line that never goes out.',
+        back_top: 'Back to the Horizon ↑',
+        footer_title: 'The Kazakh Yurt Experience',
+        footer_sub: 'Experience the legacy. Cherish the sanctuary.',
+        steppe_ambience: 'Steppe Ambience',
+        playlist: 'Playlist',
+        reset_view: 'Reset',
+        comp_shanyraq_title: 'Shanyraq (шаңырақ)',
+        comp_shanyraq_desc: 'The wooden crown of the yurt. Acts as a chimney and window, symbolizing family heritage and continuity. It is the most sacred part of the home, traditionally passed from father to youngest son.',
+        comp_uyq_title: 'Uyq (уық)',
+        comp_uyq_desc: 'Long, curved roof poles that connect the walls to the crown. Their steam-bent curve creates the signature dome, enabling it to resist high winds without central support.',
+        comp_kerege_title: 'Kerege (кереге)',
+        comp_kerege_desc: 'Folding wooden lattice sections forming the walls. Made from willow, these sections expand and contract, defining the size and portability of the home.',
+        comp_tuyyrlyk_title: 'Tuyyrlyk (туырлык)',
+        comp_tuyyrlyk_desc: 'Thick felt covering processed from wool. It provides insulation and protection, shielding occupants from the harsh steppe climate with water-resistant properties.',
+        comp_door_title: 'Sykyrlauyk (сықырлауық)',
+        comp_door_desc: 'The carved wooden door. Its name refers to the "squeak" of the wood. The threshold (bosaga) is sacred, representing the transition into safety and hospitality.'
+    }
+};
+
+window._currentLang = 'ru';
+
+function setLang(lang) {
+    window._currentLang = lang;
+    const d = window._i18nData[lang] || {};
+    document.documentElement.lang = lang;
+
+    // Update all [data-i18n] elements
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (d[key] !== undefined) el.innerHTML = d[key];
+    });
+
+    // Update lang buttons
+    ['ru','kz','en'].forEach(l => {
+        const b = document.getElementById('btn-'+l);
+        if (b) b.classList.toggle('active', l === lang);
+    });
+
+    if (window._refreshCardData) window._refreshCardData();
+}
+window.setLang = setLang;
+
+const tracks = [
+    { id: 1, label: { ru: 'Степной Амбиент', kz: 'Дала Амбиенті', en: 'Steppe Ambience' }, url: 'https://google//f63e6639-fbce-42c5-bc4c-6b21bab64b45', type: 'ambient' },
+    { id: 2, label: { ru: 'Домбыра — Классический Күй', kz: 'Домбыра — Классикалық Күй', en: 'Dombra — Classical Küy' }, url: '', type: 'kuy' },
+    { id: 3, label: { ru: 'Ән — Казахская Песня', kz: 'Ән — Қазақ Әні', en: 'Ән — Kazakh Song' }, url: '', type: 'song' },
+    { id: 4, label: { ru: 'Ветер Степи', kz: 'Дала Желі', en: 'Wind of the Steppe' }, url: '', type: 'ambient' },
+    { id: 5, label: { ru: 'Ночная Медитация', kz: 'Түнгі Медитация', en: 'Night Meditation' }, url: '', type: 'ambient' },
+];
+
+let currentTrackIdx = 0;
+let isPlaying = false;
+const audioEl = new Audio();
+audioEl.loop = true;
+
+function renderTrackList() {
+    const lang = window._currentLang || 'ru';
+    const list = document.getElementById('track-list');
+    list.innerHTML = '';
+    tracks.forEach((t, i) => {
+        const div = document.createElement('div');
+        div.className = 'track-item' + (i === currentTrackIdx ? ' playing' : '');
+        div.innerHTML = `
+            <div class="track-dot"></div>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-steppe-800 truncate">${t.label[lang]}</div>
+                <div class="text-[10px] text-steppe-400 uppercase tracking-wider">${t.type}</div>
+            </div>
+            ${i === currentTrackIdx && isPlaying ? '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-accent-gold flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>' : ''}
+        `;
+        div.onclick = () => selectTrack(i);
+        list.appendChild(div);
+    });
+    const lang2 = window._currentLang || 'ru';
+    document.getElementById('current-track-name').textContent = tracks[currentTrackIdx].label[lang2];
+}
+
+function selectTrack(idx) {
+    currentTrackIdx = idx;
+    const t = tracks[idx];
+    if (t.url) {
+        audioEl.src = t.url;
+        audioEl.play().catch(()=>{});
+        isPlaying = true;
+    } else {
+        audioEl.pause();
+        isPlaying = false;
+    }
+    updatePlayIcons();
+    renderTrackList();
+}
+
+function togglePlay() {
+    const t = tracks[currentTrackIdx];
+    if (!t.url) {
+        const first = tracks.find(x => x.url);
+        if (first) selectTrack(tracks.indexOf(first));
+        return;
+    }
+    if (!audioEl.src || audioEl.src === location.href) audioEl.src = t.url;
+    if (isPlaying) {
+        audioEl.pause();
+        isPlaying = false;
+    } else {
+        audioEl.play().catch(()=>{});
+        isPlaying = true;
+    }
+    updatePlayIcons();
+    renderTrackList();
+}
+window.togglePlay = togglePlay;
+
+function updatePlayIcons() {
+    document.getElementById('play-icon').classList.toggle('hidden', isPlaying);
+    document.getElementById('pause-icon').classList.toggle('hidden', !isPlaying);
+}
+
+let panelOpen = false;
+function togglePanel() {
+    panelOpen = !panelOpen;
+    const panel = document.getElementById('audio-panel');
+    panel.classList.toggle('open', panelOpen);
+    if (panelOpen) renderTrackList();
+}
+window.togglePanel = togglePanel;
+
+audioEl.addEventListener('timeupdate', () => {
+    if (!audioEl.duration) return;
+    const pct = (audioEl.currentTime / audioEl.duration) * 100;
+    document.getElementById('audio-progress-fill').style.width = pct + '%';
+    const m = Math.floor(audioEl.currentTime / 60);
+    const s = Math.floor(audioEl.currentTime % 60);
+    document.getElementById('current-time').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+});
+
+renderTrackList();
+
+const _origSetLang = window.setLang;
+window.setLang = function(lang) {
+    _origSetLang(lang);
+    if (panelOpen) renderTrackList();
+    document.getElementById('current-track-name').textContent = tracks[currentTrackIdx].label[lang];
+};
+
+const revealObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
+}, { threshold: 0.08 });
+document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+</script>
+
+</body>
+</html>
